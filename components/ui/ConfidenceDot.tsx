@@ -2,15 +2,16 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ConfidenceTier } from "@/lib/confidence";
 
 interface ConfidenceDotProps {
   tier: ConfidenceTier;
-  label?: string;             // e.g. "Data confidence"
-  explanation?: string;       // Shown in tooltip/popover
+  label?: string;
+  explanation?: string;
   size?: "sm" | "md";
-  showLabel?: boolean;        // Show text next to dot
+  showLabel?: boolean;
   className?: string;
 }
 
@@ -61,6 +62,30 @@ export function ConfidenceDot({
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
+  // Auto-close on scroll — popover was following the dot as the page moved
+  useEffect(() => {
+    if (!open) return;
+    let initialY = window.scrollY;
+    const handleScroll = () => {
+      // Only close if scrolled meaningfully (ignore micro-adjustments)
+      if (Math.abs(window.scrollY - initialY) > 40) {
+        setOpen(false);
+      }
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [open]);
+
+  // Auto-close on Escape
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [open]);
+
   const hasDetails = !!explanation;
 
   return (
@@ -76,6 +101,7 @@ export function ConfidenceDot({
           hasDetails ? "cursor-help hover:opacity-80" : "cursor-default"
         )}
         aria-label={`${TIER_LABELS[tier]}${explanation ? `: ${explanation}` : ""}`}
+        aria-expanded={hasDetails ? open : undefined}
       >
         <span className="relative flex items-center justify-center">
           <span
@@ -112,12 +138,22 @@ export function ConfidenceDot({
             transition={{ duration: 0.15 }}
             className="absolute top-full left-0 mt-2 z-50 w-64"
           >
-            <div className="bg-ink text-white rounded-lg shadow-card p-3">
-              <div className={cn("flex items-center gap-1.5 text-[11px] font-semibold mb-1.5")}>
+            <div className="bg-ink text-white rounded-lg shadow-card p-3 relative">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setOpen(false);
+                }}
+                className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors"
+                aria-label="Close"
+              >
+                <X className="w-3 h-3" strokeWidth={2.5} />
+              </button>
+              <div className={cn("flex items-center gap-1.5 text-[11px] font-semibold mb-1.5 pr-5")}>
                 <span className={cn("w-1.5 h-1.5 rounded-full", colors.dot)} />
                 <span>{label ?? TIER_LABELS[tier]}</span>
               </div>
-              <div className="text-[12px] leading-snug text-white/85">
+              <div className="text-[12px] leading-snug text-white/85 pr-2">
                 {explanation}
               </div>
             </div>

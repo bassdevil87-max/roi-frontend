@@ -1,27 +1,78 @@
 "use client";
 
+import { useState } from "react";
 import Image from "next/image";
-import { motion } from "framer-motion";
-import { Bookmark, Share2 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Bookmark, BookmarkCheck, Share2, Check, Copy } from "lucide-react";
 import { AppHeader, HeaderIconButton } from "@/components/ui/AppHeader";
 import { StatusBar } from "@/components/ui/StatusBar";
-import { formatPriceFull } from "@/lib/utils";
+import { formatPriceFull, cn } from "@/lib/utils";
+import { useSavedProperties } from "@/lib/useSavedProperties";
 
 interface PropertyHeroProps {
   image: string;
   address: string;
   subtitle: string;
   price: number;
+  propertyId: string;
   onEditPrice?: () => void;
 }
+
+type ShareState = "idle" | "copied" | "shared";
 
 export function PropertyHero({
   image,
   address,
   subtitle,
   price,
+  propertyId,
   onEditPrice,
 }: PropertyHeroProps) {
+  const [shareState, setShareState] = useState<ShareState>("idle");
+  const { isSaved, toggle, isMounted } = useSavedProperties();
+  const saved = isMounted && isSaved(propertyId);
+
+  const handleShare = async () => {
+    const shareUrl =
+      typeof window !== "undefined"
+        ? `${window.location.origin}/p/${propertyId}`
+        : `/p/${propertyId}`;
+    const shareData = {
+      title: `ROI · ${address}`,
+      text: `Take a look at this property on ROI: ${address}`,
+      url: shareUrl,
+    };
+
+    // Try native Web Share first (mobile)
+    if (typeof navigator !== "undefined" && "share" in navigator) {
+      try {
+        await navigator.share(shareData);
+        setShareState("shared");
+        setTimeout(() => setShareState("idle"), 1600);
+        return;
+      } catch {
+        // User cancelled or share API failed — fall through to clipboard
+      }
+    }
+
+    // Fallback: copy the URL
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        setShareState("copied");
+        setTimeout(() => setShareState("idle"), 1600);
+        return;
+      } catch {
+        // Clipboard blocked — last-ditch prompt
+      }
+    }
+
+    // Last resort — prompt dialog
+    if (typeof window !== "undefined") {
+      window.prompt("Copy this link:", shareUrl);
+    }
+  };
+
   return (
     <div className="relative">
       <StatusBar className="absolute top-0 left-0 right-0 z-20 text-white" />
@@ -34,15 +85,66 @@ export function PropertyHero({
           variant="transparent"
           right={
             <div className="flex gap-1">
+              <div className="relative">
+                <HeaderIconButton
+                  icon={
+                    <AnimatePresence mode="wait">
+                      {shareState === "idle" ? (
+                        <motion.span
+                          key="share"
+                          initial={{ opacity: 0, scale: 0.8 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.8 }}
+                          transition={{ duration: 0.15 }}
+                        >
+                          <Share2 className="w-4 h-4" strokeWidth={2} />
+                        </motion.span>
+                      ) : (
+                        <motion.span
+                          key="check"
+                          initial={{ opacity: 0, scale: 0.5 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.5 }}
+                          transition={{ type: "spring", stiffness: 400, damping: 20 }}
+                        >
+                          <Check className="w-4 h-4 text-money" strokeWidth={2.5} />
+                        </motion.span>
+                      )}
+                    </AnimatePresence>
+                  }
+                  variant="transparent"
+                  ariaLabel="Share"
+                  onClick={handleShare}
+                />
+
+                {/* Small toast below the share button */}
+                <AnimatePresence>
+                  {shareState !== "idle" && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -4, scale: 0.9 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -4, scale: 0.9 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute top-full right-0 mt-1 whitespace-nowrap bg-ink text-white text-[11px] font-semibold px-2 py-1 rounded-md flex items-center gap-1"
+                    >
+                      <Copy className="w-2.5 h-2.5" strokeWidth={2.5} />
+                      {shareState === "copied" ? "Link copied" : "Shared"}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
               <HeaderIconButton
-                icon={<Share2 className="w-4 h-4" strokeWidth={2} />}
+                icon={
+                  saved ? (
+                    <BookmarkCheck className="w-4 h-4 fill-current" strokeWidth={2} />
+                  ) : (
+                    <Bookmark className="w-4 h-4" strokeWidth={2} />
+                  )
+                }
                 variant="transparent"
-                ariaLabel="Share"
-              />
-              <HeaderIconButton
-                icon={<Bookmark className="w-4 h-4" strokeWidth={2} />}
-                variant="transparent"
-                ariaLabel="Save"
+                ariaLabel={saved ? "Remove from saved" : "Save property"}
+                onClick={() => toggle(propertyId)}
               />
             </div>
           }

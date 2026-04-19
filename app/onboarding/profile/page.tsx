@@ -1,11 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { StatusBar } from "@/components/ui/StatusBar";
 import { AppHeader } from "@/components/ui/AppHeader";
 import { Button } from "@/components/ui/Button";
+import { OnboardingProgress } from "@/components/onboarding/OnboardingProgress";
 import { Camera } from "lucide-react";
+import { storage, STORAGE_KEYS } from "@/lib/storage";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -13,12 +15,33 @@ export default function ProfilePage() {
   const [last, setLast] = useState("");
   const [email, setEmail] = useState("");
 
+  // Pre-fill if user has been here before
+  useEffect(() => {
+    const savedName = storage.get<string>(STORAGE_KEYS.onboarding_name);
+    const savedEmail = storage.get<string>(STORAGE_KEYS.onboarding_email);
+    if (savedName) {
+      const [f, ...rest] = savedName.split(" ");
+      setFirst(f || "");
+      setLast(rest.join(" "));
+    }
+    if (savedEmail) setEmail(savedEmail);
+  }, []);
+
   const canContinue = first.length >= 1 && last.length >= 1 && /.+@.+/.test(email);
+
+  const handleContinue = () => {
+    if (!canContinue) return;
+    storage.set(STORAGE_KEYS.onboarding_name, `${first.trim()} ${last.trim()}`.trim());
+    storage.set(STORAGE_KEYS.onboarding_email, email.trim());
+    storage.set(STORAGE_KEYS.onboarding_completed, true);
+    router.push("/thesis/goal");
+  };
 
   return (
     <>
       <StatusBar />
       <AppHeader />
+      <OnboardingProgress current={2} total={3} />
 
       <div className="px-6 pt-2">
         <h1 className="font-display text-[28px] font-semibold leading-tight tracking-tight mb-2">
@@ -83,7 +106,7 @@ export default function ProfilePage() {
           size="l"
           fullWidth
           disabled={!canContinue}
-          onClick={() => router.push("/thesis/goal")}
+          onClick={handleContinue}
         >
           Continue
         </Button>

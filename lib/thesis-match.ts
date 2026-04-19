@@ -1,7 +1,8 @@
 import type { FeedProperty } from "@/types/roi";
+import { storage, STORAGE_KEYS } from "@/lib/storage";
 
 // ───────────────────────────────────────────────────────────────────────────
-// Thesis — the version stored in sessionStorage during the onboarding flow.
+// Thesis — the version stored locally during the onboarding flow.
 // Narrower than the full backend Thesis type; captures what the builder collects.
 // ───────────────────────────────────────────────────────────────────────────
 
@@ -206,51 +207,60 @@ export function applyThesis(
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// Read thesis from sessionStorage (client-side only).
+// Read thesis from local storage (client-side only).
 // Returns null if no thesis has been saved yet.
 // ───────────────────────────────────────────────────────────────────────────
 
 export function readThesisFromStorage(): LocalThesis | null {
-  if (typeof window === "undefined") return null;
-
-  const goal = sessionStorage.getItem("thesis_goal") as ThesisGoal | null;
-  const statesRaw = sessionStorage.getItem("thesis_states");
-  const citiesRaw = sessionStorage.getItem("thesis_cities");
-  const propTypeRaw = sessionStorage.getItem("thesis_prop_type") as ThesisPropType | null;
-  const minRaw = sessionStorage.getItem("thesis_min_price");
-  const maxRaw = sessionStorage.getItem("thesis_max_price");
-
+  const goal = storage.get<ThesisGoal>(STORAGE_KEYS.thesis_goal);
   if (!goal) return null;
 
+  const states = storage.get<string[]>(STORAGE_KEYS.thesis_states) ?? [];
+  const cities_raw = storage.get<Record<string, string[]>>(STORAGE_KEYS.thesis_cities);
+  const propType = storage.get<ThesisPropType>(STORAGE_KEYS.thesis_prop_type) ?? "any";
+  const minPrice = storage.get<number>(STORAGE_KEYS.thesis_min_price) ?? 0;
+  const maxPrice = storage.get<number>(STORAGE_KEYS.thesis_max_price) ?? 10_000_000;
+
+  // Only keep cities_by_state if there are actual non-empty arrays
   let cities_by_state: Record<string, string[]> | undefined;
-  if (citiesRaw) {
-    try {
-      const parsed = JSON.parse(citiesRaw);
-      // Only keep it if there are actual city filters
-      if (parsed && typeof parsed === "object" && Object.values(parsed).some((arr) => Array.isArray(arr) && arr.length > 0)) {
-        cities_by_state = parsed;
-      }
-    } catch {
-      // ignore
-    }
+  if (
+    cities_raw &&
+    typeof cities_raw === "object" &&
+    Object.values(cities_raw).some((arr) => Array.isArray(arr) && arr.length > 0)
+  ) {
+    cities_by_state = cities_raw;
   }
 
   return {
     goal,
-    states: statesRaw ? JSON.parse(statesRaw) : [],
+    states,
     cities_by_state,
-    property_type_pref: propTypeRaw ?? "any",
-    min_price: minRaw ? Number(minRaw) : 0,
-    max_price: maxRaw ? Number(maxRaw) : 10_000_000,
+    property_type_pref: propType,
+    min_price: minPrice,
+    max_price: maxPrice,
   };
 }
 
 export function writeThesisToStorage(thesis: Partial<LocalThesis>): void {
-  if (typeof window === "undefined") return;
-  if (thesis.goal) sessionStorage.setItem("thesis_goal", thesis.goal);
-  if (thesis.states) sessionStorage.setItem("thesis_states", JSON.stringify(thesis.states));
-  if (thesis.cities_by_state) sessionStorage.setItem("thesis_cities", JSON.stringify(thesis.cities_by_state));
-  if (thesis.property_type_pref) sessionStorage.setItem("thesis_prop_type", thesis.property_type_pref);
-  if (thesis.min_price != null) sessionStorage.setItem("thesis_min_price", String(thesis.min_price));
-  if (thesis.max_price != null) sessionStorage.setItem("thesis_max_price", String(thesis.max_price));
+  if (thesis.goal) storage.set(STORAGE_KEYS.thesis_goal, thesis.goal);
+  if (thesis.states) storage.set(STORAGE_KEYS.thesis_states, thesis.states);
+  if (thesis.cities_by_state) storage.set(STORAGE_KEYS.thesis_cities, thesis.cities_by_state);
+  if (thesis.property_type_pref) storage.set(STORAGE_KEYS.thesis_prop_type, thesis.property_type_pref);
+  if (thesis.min_price != null) storage.set(STORAGE_KEYS.thesis_min_price, thesis.min_price);
+  if (thesis.max_price != null) storage.set(STORAGE_KEYS.thesis_max_price, thesis.max_price);
+  // Mark thesis as completed so /feed can detect a returning user
+  storage.set(STORAGE_KEYS.thesis_completed, true);
+}
+
+/**
+ * Completely clear the saved thesis — used when user wants to start over.
+ */
+export function clearThesisFromStorage(): void {
+  storage.remove(STORAGE_KEYS.thesis_goal);
+  storage.remove(STORAGE_KEYS.thesis_states);
+  storage.remove(STORAGE_KEYS.thesis_cities);
+  storage.remove(STORAGE_KEYS.thesis_prop_type);
+  storage.remove(STORAGE_KEYS.thesis_min_price);
+  storage.remove(STORAGE_KEYS.thesis_max_price);
+  storage.remove(STORAGE_KEYS.thesis_completed);
 }

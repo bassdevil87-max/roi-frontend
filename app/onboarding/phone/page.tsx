@@ -1,35 +1,55 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { StatusBar } from "@/components/ui/StatusBar";
 import { AppHeader } from "@/components/ui/AppHeader";
 import { Button } from "@/components/ui/Button";
-import { ChevronDown } from "lucide-react";
+import { OnboardingProgress } from "@/components/onboarding/OnboardingProgress";
+import { ChevronDown, Info } from "lucide-react";
+import { storage, STORAGE_KEYS } from "@/lib/storage";
 
 export default function PhonePage() {
   const router = useRouter();
   const [country] = useState({ flag: "🇺🇸", code: "+1", name: "United States" });
   const [phone, setPhone] = useState("");
 
+  // Pre-fill if user has been here before
+  useEffect(() => {
+    const saved = storage.get<string>(STORAGE_KEYS.onboarding_phone);
+    if (saved) setPhone(saved);
+  }, []);
+
   const canContinue = phone.replace(/\D/g, "").length >= 10;
 
   const handleContinue = () => {
-    if (canContinue) router.push("/onboarding/otp");
+    if (canContinue) {
+      storage.set(STORAGE_KEYS.onboarding_phone, phone);
+      router.push("/onboarding/otp");
+    }
   };
 
   return (
     <>
       <StatusBar />
       <AppHeader />
+      <OnboardingProgress current={0} total={3} />
 
       <div className="px-6 pt-2">
         <h1 className="font-display text-[28px] font-semibold leading-tight tracking-tight mb-2">
           Enter your phone number
         </h1>
-        <p className="text-[14px] text-ink-secondary leading-relaxed mb-8">
+        <p className="text-[14px] text-ink-secondary leading-relaxed mb-4">
           We&apos;ll send you a one-time code via SMS to verify your number.
         </p>
+
+        {/* Demo mode notice */}
+        <div className="flex items-start gap-2 px-3 py-2 bg-signal-bg/40 border border-signal/20 rounded-lg mb-6">
+          <Info className="w-3.5 h-3.5 text-signal flex-shrink-0 mt-0.5" strokeWidth={2.2} />
+          <span className="text-[11px] text-ink leading-snug">
+            <span className="font-semibold">Demo:</span> any 10-digit number will work. No SMS is actually sent.
+          </span>
+        </div>
 
         {/* Country selector */}
         <div className="mb-3">

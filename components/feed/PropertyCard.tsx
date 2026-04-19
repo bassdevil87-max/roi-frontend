@@ -10,6 +10,8 @@ import { ConfidenceDot } from "@/components/ui/ConfidenceDot";
 import { formatMoney, formatPriceFull } from "@/lib/utils";
 import { calculateProfitConfidence } from "@/lib/confidence";
 import { useExpertMode } from "@/context/ExpertMode";
+import { useSavedProperties } from "@/lib/useSavedProperties";
+import { cn } from "@/lib/utils";
 import { DATA_SOURCE_LABELS } from "@/types/roi";
 import type { FeedProperty } from "@/types/roi";
 
@@ -20,19 +22,32 @@ interface PropertyCardProps {
 
 export function PropertyCard({ property, index = 0 }: PropertyCardProps) {
   const { expertMode } = useExpertMode();
+  const { isSaved, toggle, isMounted } = useSavedProperties();
   const lev = property.financials.leveraged;
   const confidence = useMemo(() => calculateProfitConfidence(property), [property]);
+
+  const saved = isMounted && isSaved(property.listing.external_id);
 
   const bestMatch = property.thesis_matches.reduce(
     (max, m) => (m.match_score_pct > max ? m.match_score_pct : max),
     0
   );
 
+  // Cap stagger animation at 6 cards — further cards just fade in on scroll
+  // via whileInView, which only triggers when they near the viewport.
+  const useImmediate = index < 6;
+  const staggerDelay = useImmediate ? index * 0.06 : 0;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, delay: index * 0.07, ease: [0.16, 1, 0.3, 1] }}
+      {...(useImmediate
+        ? { animate: { opacity: 1, y: 0 } }
+        : {
+            whileInView: { opacity: 1, y: 0 },
+            viewport: { once: true, margin: "-50px" },
+          })}
+      transition={{ duration: 0.35, delay: staggerDelay, ease: [0.16, 1, 0.3, 1] }}
     >
       <Link
         href={`/property/${property.listing.external_id}`}
@@ -63,14 +78,27 @@ export function PropertyCard({ property, index = 0 }: PropertyCardProps) {
 
             {/* Top-right: save heart */}
             <button
-              className="absolute top-3 right-3 w-9 h-9 bg-white/95 backdrop-blur-md rounded-full flex items-center justify-center hover:bg-white transition-colors"
-              aria-label="Save"
+              className={cn(
+                "absolute top-3 right-3 w-9 h-9 rounded-full flex items-center justify-center transition-all",
+                saved
+                  ? "bg-danger/95 backdrop-blur-md hover:bg-danger"
+                  : "bg-white/95 backdrop-blur-md hover:bg-white"
+              )}
+              aria-label={saved ? "Unsave property" : "Save property"}
+              aria-pressed={saved}
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                toggle(property.listing.external_id);
               }}
             >
-              <Heart className="w-4 h-4" strokeWidth={2} />
+              <Heart
+                className={cn(
+                  "w-4 h-4 transition-colors",
+                  saved ? "fill-white text-white" : "text-ink"
+                )}
+                strokeWidth={2}
+              />
             </button>
 
             {/* Bottom: monthly profit chip + confidence dot */}

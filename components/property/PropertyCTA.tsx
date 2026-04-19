@@ -5,12 +5,14 @@ import { Button } from "@/components/ui/Button";
 import { motion, AnimatePresence } from "framer-motion";
 import { formatMoney } from "@/lib/utils";
 import { CheckCircle2, X } from "lucide-react";
+import { useSwipeToDismiss } from "@/lib/useSwipeToDismiss";
 
 interface PropertyCTAProps {
   monthlyProfit: number;
   returnPct: number;
   tenantStatus: "ready" | "pending" | "none";
   propertyAddress?: string;
+  propertyId?: string;
   onClick?: () => void;
 }
 
@@ -19,10 +21,12 @@ export function PropertyCTA({
   returnPct,
   tenantStatus,
   propertyAddress,
+  propertyId,
   onClick,
 }: PropertyCTAProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [userEmail, setUserEmail] = useState("");
 
   const handleClick = () => {
     if (onClick) {
@@ -33,10 +37,30 @@ export function PropertyCTA({
   };
 
   const handleSubmit = () => {
+    // Fire notification in background — don't await, don't error
+    fetch("/api/notify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "interest",
+        payload: {
+          property_id: propertyId,
+          property_address: propertyAddress,
+          monthly_profit: monthlyProfit,
+          user_email: userEmail.trim() || undefined,
+          submitted_at: new Date().toISOString(),
+          user_agent: typeof navigator !== "undefined" ? navigator.userAgent : undefined,
+        },
+      }),
+    }).catch(() => {
+      // Silent fail — user gets success state regardless
+    });
+
     setSubmitted(true);
     setTimeout(() => {
       setModalOpen(false);
       setSubmitted(false);
+      setUserEmail("");
     }, 2200);
   };
 
@@ -98,6 +122,8 @@ export function PropertyCTA({
             propertyAddress={propertyAddress}
             monthlyProfit={monthlyProfit}
             submitted={submitted}
+            userEmail={userEmail}
+            onEmailChange={setUserEmail}
             onClose={() => setModalOpen(false)}
             onSubmit={handleSubmit}
           />
@@ -113,15 +139,21 @@ function InterestModal({
   propertyAddress,
   monthlyProfit,
   submitted,
+  userEmail,
+  onEmailChange,
   onClose,
   onSubmit,
 }: {
   propertyAddress?: string;
   monthlyProfit: number;
   submitted: boolean;
+  userEmail: string;
+  onEmailChange: (e: string) => void;
   onClose: () => void;
   onSubmit: () => void;
 }) {
+  const swipe = useSwipeToDismiss({ onDismiss: onClose });
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -133,10 +165,11 @@ function InterestModal({
     >
       <motion.div
         initial={{ y: 40, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
+        animate={{ y: swipe.dragY, opacity: 1 }}
         exit={{ y: 40, opacity: 0 }}
         transition={{ type: "spring", stiffness: 380, damping: 32 }}
-        className="w-full max-w-[min(430px,100%)] bg-white rounded-t-[28px] sm:rounded-[28px] pt-4 pb-8 px-6 shadow-2xl"
+        {...swipe.props}
+        className="w-full max-w-[min(430px,100%)] bg-white rounded-t-[28px] sm:rounded-[28px] pt-4 pb-8 px-6 shadow-2xl touch-pan-y"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Drag handle — mobile */}
@@ -176,9 +209,26 @@ function InterestModal({
               </div>
             )}
 
-            <p className="text-[13px] text-ink-secondary leading-relaxed mb-5">
+            <p className="text-[13px] text-ink-secondary leading-relaxed mb-4">
               We&apos;ll have a licensed agent reach out within 24 hours to walk you through next steps — financing options, showing scheduling, and offer strategy.
             </p>
+
+            {/* Email input */}
+            <div className="mb-4">
+              <label className="text-[11px] font-medium text-ink-tertiary uppercase tracking-wider mb-1.5 block">
+                Your email (optional)
+              </label>
+              <input
+                type="email"
+                value={userEmail}
+                onChange={(e) => onEmailChange(e.target.value)}
+                placeholder="you@example.com"
+                className="input-base"
+              />
+              <p className="text-[10px] text-ink-tertiary mt-1">
+                Leave blank if you&apos;d rather we reach out differently.
+              </p>
+            </div>
 
             <div className="space-y-2">
               <Button variant="primary" size="l" fullWidth onClick={onSubmit}>

@@ -1,13 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { StatusBar } from "@/components/ui/StatusBar";
 import { AppHeader } from "@/components/ui/AppHeader";
 import { Button } from "@/components/ui/Button";
 import { ThesisProgress } from "@/components/thesis/ThesisProgress";
 import { ChoiceCard } from "@/components/thesis/ChoiceCard";
+import { storage, STORAGE_KEYS } from "@/lib/storage";
 
 type Goal = "cash_flow" | "appreciation" | "balanced";
 
@@ -36,6 +37,12 @@ export default function ThesisGoalPage() {
   const router = useRouter();
   const [selected, setSelected] = useState<Goal | null>(null);
 
+  // Pre-fill from stored thesis if the user has been here before
+  useEffect(() => {
+    const saved = storage.get<Goal>(STORAGE_KEYS.thesis_goal);
+    if (saved) setSelected(saved);
+  }, []);
+
   return (
     <>
       <StatusBar />
@@ -53,10 +60,10 @@ export default function ThesisGoalPage() {
             Step 1 of 3
           </div>
           <h1 className="font-display text-[28px] font-semibold leading-tight tracking-tight mb-2">
-            What is your primary goal for this investment?
+            What are you optimizing for?
           </h1>
           <p className="text-[14px] text-ink-secondary leading-relaxed">
-            This tells us how to score each property for you. You can change it anytime.
+            We weight the match score differently for each. Cash flow rewards properties with high cap rates; appreciation rewards neighborhoods with strong growth fundamentals.
           </p>
         </motion.div>
 
@@ -87,7 +94,7 @@ export default function ThesisGoalPage() {
           disabled={!selected}
           onClick={() => {
             if (selected) {
-              sessionStorage.setItem("thesis_goal", selected);
+              storage.set(STORAGE_KEYS.thesis_goal, selected);
               router.push("/thesis/geography");
             }
           }}

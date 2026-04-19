@@ -39,23 +39,67 @@ function seededRandom(seed: string): () => number {
   };
 }
 
-const IMAGES = [
-  "https://images.unsplash.com/photo-1568605114967-8130f3a36994?auto=format&fit=crop&w=1200&q=80",
-  "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?auto=format&fit=crop&w=1200&q=80",
-  "https://images.unsplash.com/photo-1570129477492-45c003edd2be?auto=format&fit=crop&w=1200&q=80",
-  "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=1200&q=80",
-  "https://images.unsplash.com/photo-1605146769289-440113cc3d00?auto=format&fit=crop&w=1200&q=80",
-  "https://images.unsplash.com/photo-1583608205776-bfd35f0d9f83?auto=format&fit=crop&w=1200&q=80",
-  "https://images.unsplash.com/photo-1598228723793-52759bba239c?auto=format&fit=crop&w=1200&q=80",
-  "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=1200&q=80",
-  "https://images.unsplash.com/photo-1613490493576-7fde63acd811?auto=format&fit=crop&w=1200&q=80",
-  "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=1200&q=80",
-  "https://images.unsplash.com/photo-1558036117-15d82a90b9b1?auto=format&fit=crop&w=1200&q=80",
-  "https://images.unsplash.com/photo-1523217582562-09d0def993a6?auto=format&fit=crop&w=1200&q=80",
-  "https://images.unsplash.com/photo-1593696140826-c58b021acf8b?auto=format&fit=crop&w=1200&q=80",
-  "https://images.unsplash.com/photo-1572120360610-d971b9d7767c?auto=format&fit=crop&w=1200&q=80",
-  "https://images.unsplash.com/photo-1576941089067-2de3c901e126?auto=format&fit=crop&w=1200&q=80",
-];
+// Images categorized by property type for realistic matching.
+// Each property type has multiple images; we pick deterministically by id.
+const IMAGES_BY_TYPE: Record<string, string[]> = {
+  // Single family - detached houses, ranch styles, colonials
+  single_family: [
+    "https://images.unsplash.com/photo-1568605114967-8130f3a36994?auto=format&fit=crop&w=1200&q=80",
+    "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?auto=format&fit=crop&w=1200&q=80",
+    "https://images.unsplash.com/photo-1583608205776-bfd35f0d9f83?auto=format&fit=crop&w=1200&q=80",
+    "https://images.unsplash.com/photo-1598228723793-52759bba239c?auto=format&fit=crop&w=1200&q=80",
+    "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=1200&q=80",
+    "https://images.unsplash.com/photo-1613490493576-7fde63acd811?auto=format&fit=crop&w=1200&q=80",
+    "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=1200&q=80",
+    "https://images.unsplash.com/photo-1576941089067-2de3c901e126?auto=format&fit=crop&w=1200&q=80",
+    "https://images.unsplash.com/photo-1572120360610-d971b9d7767c?auto=format&fit=crop&w=1200&q=80",
+  ],
+  // Townhouses - row houses, urban brick
+  townhouse: [
+    "https://images.unsplash.com/photo-1570129477492-45c003edd2be?auto=format&fit=crop&w=1200&q=80",
+    "https://images.unsplash.com/photo-1558036117-15d82a90b9b1?auto=format&fit=crop&w=1200&q=80",
+    "https://images.unsplash.com/photo-1605146769289-440113cc3d00?auto=format&fit=crop&w=1200&q=80",
+  ],
+  // Condos - apartment building exteriors, modern glass
+  condo: [
+    "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=1200&q=80",
+    "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?auto=format&fit=crop&w=1200&q=80",
+    "https://images.unsplash.com/photo-1515263487990-61b07816b324?auto=format&fit=crop&w=1200&q=80",
+  ],
+  // Duplex - side-by-side or stacked two-unit homes
+  duplex: [
+    "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=1200&q=80",
+    "https://images.unsplash.com/photo-1523217582562-09d0def993a6?auto=format&fit=crop&w=1200&q=80",
+    "https://images.unsplash.com/photo-1593696140826-c58b021acf8b?auto=format&fit=crop&w=1200&q=80",
+  ],
+  // Triplex / fourplex - multi-unit buildings
+  triplex: [
+    "https://images.unsplash.com/photo-1625602812206-5ec545ca1231?auto=format&fit=crop&w=1200&q=80",
+    "https://images.unsplash.com/photo-1629831116288-4c5b107abfa8?auto=format&fit=crop&w=1200&q=80",
+    "https://images.unsplash.com/photo-1582407947304-fd86f028f716?auto=format&fit=crop&w=1200&q=80",
+  ],
+  fourplex: [
+    "https://images.unsplash.com/photo-1625602812206-5ec545ca1231?auto=format&fit=crop&w=1200&q=80",
+    "https://images.unsplash.com/photo-1613490493576-7fde63acd811?auto=format&fit=crop&w=1200&q=80",
+  ],
+  // Larger multi-family
+  multi_family_5_plus: [
+    "https://images.unsplash.com/photo-1518005020951-eccb494ad742?auto=format&fit=crop&w=1200&q=80",
+    "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?auto=format&fit=crop&w=1200&q=80",
+  ],
+  mobile_home: [
+    "https://images.unsplash.com/photo-1584738766473-61c083514bf4?auto=format&fit=crop&w=1200&q=80",
+  ],
+};
+
+// Fallback pool if a type has no images (shouldn't happen but defensive)
+const FALLBACK_IMAGES = IMAGES_BY_TYPE.single_family;
+
+function pickImageForProperty(propertyType: string, seed: string): string {
+  const pool = IMAGES_BY_TYPE[propertyType] ?? FALLBACK_IMAGES;
+  const rnd = seededRandom(seed + "_img");
+  return pool[Math.floor(rnd() * pool.length)];
+}
 
 // ───────────────────────────────────────────────────────────────────────────
 // Climate risk lookups — by state, roughly accurate for demo purposes
@@ -765,7 +809,7 @@ function buildProperty(s: SeedInput): FeedProperty {
       ...(climate.wildfire.score >= 6 ? ["wildfire_risk"] : []),
       ...(climate.heat.score >= 7 ? ["heat_risk"] : []),
     ],
-    hero_image: IMAGES[s.imageIdx ?? Math.floor(seededRandom(s.id + "_img")() * IMAGES.length)],
+    hero_image: pickImageForProperty(s.type, s.id),
     projection_3y: projection3y,
     growth_reasons: [
       `Rents increased ${8 + Math.floor(seededRandom(s.id + "_r1")() * 8)}% in the last 3 years (Census ACS)`,

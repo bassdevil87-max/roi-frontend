@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { StatusBar } from "@/components/ui/StatusBar";
 import { AppHeader } from "@/components/ui/AppHeader";
@@ -10,6 +10,7 @@ import { ThesisProgress } from "@/components/thesis/ThesisProgress";
 import { ChoiceCard } from "@/components/thesis/ChoiceCard";
 import { createThesis } from "@/lib/api";
 import { formatMoney } from "@/lib/utils";
+import { storage, STORAGE_KEYS } from "@/lib/storage";
 
 type PropertyTypePref = "single_family_only" | "multi_family_only" | "any";
 
@@ -47,18 +48,28 @@ export default function ThesisBudgetPage() {
   const [minBudget, setMinBudget] = useState(100_000);
   const [maxBudget, setMaxBudget] = useState(500_000);
 
+  // Pre-fill from stored thesis
+  useEffect(() => {
+    const savedType = storage.get<PropertyTypePref>(STORAGE_KEYS.thesis_prop_type);
+    const savedMin = storage.get<number>(STORAGE_KEYS.thesis_min_price);
+    const savedMax = storage.get<number>(STORAGE_KEYS.thesis_max_price);
+    if (savedType) setPropType(savedType);
+    if (typeof savedMin === "number") setMinBudget(savedMin);
+    if (typeof savedMax === "number") setMaxBudget(savedMax);
+  }, []);
+
   const canContinue = !!propType;
 
   const handleContinue = async () => {
     if (!propType) return;
 
-    const goal = sessionStorage.getItem("thesis_goal") || "cash_flow";
-    const states = JSON.parse(sessionStorage.getItem("thesis_states") || "[]");
+    const goal = storage.get<string>(STORAGE_KEYS.thesis_goal) || "cash_flow";
+    const states = storage.get<string[]>(STORAGE_KEYS.thesis_states) || [];
 
-    // Persist the rest of the thesis for the feed to consume
-    sessionStorage.setItem("thesis_prop_type", propType);
-    sessionStorage.setItem("thesis_min_price", String(minBudget));
-    sessionStorage.setItem("thesis_max_price", String(maxBudget));
+    storage.set(STORAGE_KEYS.thesis_prop_type, propType);
+    storage.set(STORAGE_KEYS.thesis_min_price, minBudget);
+    storage.set(STORAGE_KEYS.thesis_max_price, maxBudget);
+    storage.set(STORAGE_KEYS.thesis_completed, true);
 
     try {
       const res = await createThesis({
@@ -69,10 +80,9 @@ export default function ThesisBudgetPage() {
         min_price: minBudget,
         max_price: maxBudget,
       });
-      sessionStorage.setItem("thesis_id", res.thesis_id);
+      storage.set("thesis_id", res.thesis_id);
     } catch {
-      // Mock fallback
-      sessionStorage.setItem("thesis_id", "demo_thesis_001");
+      storage.set("thesis_id", "demo_thesis_001");
     }
     router.push("/thesis/scanning");
   };
@@ -94,10 +104,10 @@ export default function ThesisBudgetPage() {
             Step 3 of 3
           </div>
           <h1 className="font-display text-[28px] font-semibold leading-tight tracking-tight mb-2">
-            Your budget and property type
+            What&apos;s your budget?
           </h1>
           <p className="text-[14px] text-ink-secondary leading-relaxed">
-            We&apos;ll score every listing in your range.
+            Set your target price range and which property types you&apos;ll consider. We&apos;ll filter out anything that doesn&apos;t fit.
           </p>
         </motion.div>
 

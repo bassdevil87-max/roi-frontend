@@ -4,17 +4,17 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
+import { storage, STORAGE_KEYS } from "@/lib/storage";
 
 export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
-    // If the user already set up a thesis in this session, send them straight to the feed.
-    // Otherwise start the onboarding flow.
-    const hasThesis = typeof window !== "undefined" && !!sessionStorage.getItem("thesis_goal");
+    // Returning user with a completed thesis → feed
+    // First-timer → onboarding
+    const hasThesis = storage.has(STORAGE_KEYS.thesis_goal);
     const destination = hasThesis ? "/feed" : "/onboarding";
 
-    // Small delay so the splash doesn't flash too fast
     const t = setTimeout(() => router.replace(destination), 400);
     return () => clearTimeout(t);
   }, [router]);

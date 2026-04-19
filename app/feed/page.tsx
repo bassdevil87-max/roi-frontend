@@ -8,23 +8,53 @@ import { StatusBar } from "@/components/ui/StatusBar";
 import { PropertyCard } from "@/components/feed/PropertyCard";
 import { ExpertModeToggle } from "@/components/ui/ExpertModeToggle";
 import { DemoBanner } from "@/components/ui/DemoBanner";
+import { FeedbackWidget } from "@/components/ui/FeedbackWidget";
+import { SearchFilterBar } from "@/components/ui/SearchFilterBar";
+import { ComingSoonModal } from "@/components/ui/ComingSoonModal";
+import { BackToTopButton } from "@/components/ui/BackToTopButton";
+import { ExpertModeHint } from "@/components/ui/ExpertModeHint";
 import { mockFeedProperties } from "@/lib/mock-data";
 import {
   readThesisFromStorage,
   scoreAgainstThesis,
   type LocalThesis,
 } from "@/lib/thesis-match";
+import { storage, STORAGE_KEYS } from "@/lib/storage";
 
 export default function FeedPage() {
   const [thesis, setThesis] = useState<LocalThesis | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterComingSoonOpen, setFilterComingSoonOpen] = useState(false);
 
-  // Read thesis after mount (sessionStorage is client-only)
+  // Read thesis + restore scroll position after mount (storage is client-only)
   useEffect(() => {
     setThesis(readThesisFromStorage());
+
+    // Restore scroll position if the user is returning from a property page
+    const savedY = storage.get<number>(STORAGE_KEYS.feed_scroll_y);
+    if (typeof savedY === "number" && savedY > 0) {
+      // Wait a tick for the cards to render before scrolling
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: savedY, behavior: "auto" });
+        // Clear so next visit starts at top — only restore once
+        storage.remove(STORAGE_KEYS.feed_scroll_y);
+      });
+    }
+
+    // Save scroll position whenever a card link is clicked
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('a[href^="/property/"]')) {
+        storage.set(STORAGE_KEYS.feed_scroll_y, window.scrollY);
+      }
+    };
+    document.addEventListener("click", handleClick);
+    return () => document.removeEventListener("click", handleClick);
   }, []);
 
   // Score every property and split into passing / partial / excluded
-  const { passing, partial, totalAnalyzed, thesisActive } = useMemo(() => {
+  const { passing: allPassing, partial: allPartial, totalAnalyzed, thesisActive } = useMemo(() => {
     // If no thesis saved, treat everything as a match (default demo state)
     if (!thesis) {
       const scored = mockFeedProperties.map((p) => ({
@@ -80,6 +110,26 @@ export default function FeedPage() {
     };
   }, [thesis]);
 
+  // Apply search filter on top of thesis filtering — address/city/state match
+  const { passing, partial } = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return { passing: allPassing, partial: allPartial };
+    const matches = (item: typeof allPassing[number]) => {
+      const a = item.property.address;
+      return (
+        a.street.toLowerCase().includes(q) ||
+        a.city.toLowerCase().includes(q) ||
+        a.state.toLowerCase().includes(q) ||
+        a.zip_code?.toLowerCase().includes(q) ||
+        `${a.city}, ${a.state}`.toLowerCase().includes(q)
+      );
+    };
+    return {
+      passing: allPassing.filter(matches),
+      partial: allPartial.filter(matches),
+    };
+  }, [allPassing, allPartial, searchQuery]);
+
   return (
     <>
       <StatusBar />
@@ -102,12 +152,17 @@ export default function FeedPage() {
           </div>
           <div className="flex gap-2 flex-shrink-0 ml-2">
             <button
-              className="w-10 h-10 rounded-full bg-paper-card flex items-center justify-center hover:bg-paper-stroke transition-colors"
+              onClick={() => setSearchOpen(!searchOpen)}
+              className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
+                searchOpen ? "bg-ink text-white" : "bg-paper-card hover:bg-paper-stroke"
+              }`}
               aria-label="Search"
+              aria-pressed={searchOpen}
             >
               <Search className="w-4 h-4" strokeWidth={2} />
             </button>
             <button
+              onClick={() => setFilterComingSoonOpen(true)}
               className="w-10 h-10 rounded-full bg-paper-card flex items-center justify-center hover:bg-paper-stroke transition-colors"
               aria-label="Filters"
             >
@@ -116,9 +171,22 @@ export default function FeedPage() {
           </div>
         </div>
 
+        {/* Search bar — expands below when search is open */}
+        <SearchFilterBar
+          open={searchOpen}
+          value={searchQuery}
+          onChange={setSearchQuery}
+          onClose={() => setSearchOpen(false)}
+        />
+
         {/* Expert mode toggle */}
         <div className="flex justify-end mt-2">
           <ExpertModeToggle />
+        </div>
+
+        {/* First-run hint pointing at expert mode */}
+        <div className="mt-2">
+          <ExpertModeHint />
         </div>
 
         {/* Thesis summary bar */}
@@ -141,20 +209,38 @@ export default function FeedPage() {
       {/* Passing properties */}
       <section className="px-5 pt-2 space-y-4 bg-paper-soft pb-4">
         {passing.length === 0 && (
-          <div className="py-12 text-center">
-            <div className="text-base font-semibold mb-1">
-              No properties match your thesis right now.
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            className="py-10 px-4 bg-white border border-paper-stroke rounded-2xl text-center"
+          >
+            <div className="w-14 h-14 rounded-full bg-paper-card flex items-center justify-center mx-auto mb-3">
+              <Search className="w-6 h-6 text-ink-tertiary" strokeWidth={2} />
             </div>
-            <div className="text-sm text-ink-secondary max-w-xs mx-auto">
-              Try widening your price range or adding states. We&apos;ll notify you as new listings match.
+            <div className="font-display text-[18px] font-semibold mb-1.5">
+              Nothing matches yet
             </div>
-            <Link
-              href="/thesis/goal"
-              className="inline-block mt-4 text-sm font-semibold text-signal hover:text-signal-dark"
-            >
-              Edit my thesis →
-            </Link>
-          </div>
+            <div className="text-[13px] text-ink-secondary max-w-[280px] mx-auto leading-relaxed mb-5">
+              {partial.length > 0
+                ? `We found ${partial.length} partial match${partial.length === 1 ? "" : "es"} below. Want to widen your thesis to see more?`
+                : "Try widening your price range, adding more states, or changing property type to see more listings."}
+            </div>
+            <div className="flex gap-2 justify-center flex-wrap">
+              <Link
+                href="/thesis/goal"
+                className="inline-flex items-center gap-1.5 px-4 h-9 rounded-full bg-ink text-white text-[12px] font-semibold hover:bg-ink/90 transition-colors"
+              >
+                Edit thesis
+              </Link>
+              <Link
+                href="/thesis/budget"
+                className="inline-flex items-center gap-1.5 px-4 h-9 rounded-full bg-paper-card text-ink text-[12px] font-semibold hover:bg-paper-stroke transition-colors"
+              >
+                Widen budget
+              </Link>
+            </div>
+          </motion.div>
         )}
 
         {passing.map((item, i) => (
@@ -205,6 +291,27 @@ export default function FeedPage() {
           </div>
         </section>
       )}
+
+      {/* Feedback widget — lives at bottom-right, no sticky CTA on feed */}
+      <FeedbackWidget context="feed" bottomOffset={24} />
+
+      {/* Back-to-top — shown after 600px scroll, sits above feedback FAB */}
+      <BackToTopButton bottomOffset={84} />
+
+      {/* Filters coming soon modal */}
+      <ComingSoonModal
+        open={filterComingSoonOpen}
+        onClose={() => setFilterComingSoonOpen(false)}
+        title="Advanced filters"
+        description="Filters give you finer control over which properties show up in your feed — beyond what your thesis alone can do."
+        features={[
+          "Filter by bedroom/bathroom count",
+          "Filter by days on market",
+          "Filter by condition (strong / moderate / unknown)",
+          "Filter by Section 8 eligibility",
+          "Save multiple filter presets",
+        ]}
+      />
     </>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { StatusBar } from "@/components/ui/StatusBar";
 import { AppHeader } from "@/components/ui/AppHeader";
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { ThesisProgress } from "@/components/thesis/ThesisProgress";
 import { Search, Check, ChevronDown, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { storage, STORAGE_KEYS } from "@/lib/storage";
 
 interface StateOption {
   code: string;
@@ -37,6 +38,14 @@ export default function ThesisGeographyPage() {
   const [selectedCities, setSelectedCities] = useState<Record<string, string[]>>({});
   const [expandedState, setExpandedState] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+
+  // Pre-fill from stored thesis
+  useEffect(() => {
+    const savedStates = storage.get<string[]>(STORAGE_KEYS.thesis_states);
+    const savedCities = storage.get<Record<string, string[]>>(STORAGE_KEYS.thesis_cities);
+    if (savedStates && savedStates.length > 0) setSelectedStates(savedStates);
+    if (savedCities) setSelectedCities(savedCities);
+  }, []);
 
   const toggleState = (code: string) => {
     setSelectedStates((prev) => {
@@ -86,8 +95,8 @@ export default function ThesisGeographyPage() {
   const totalCities = Object.values(selectedCities).reduce((sum, arr) => sum + arr.length, 0);
 
   const handleContinue = () => {
-    sessionStorage.setItem("thesis_states", JSON.stringify(selectedStates));
-    sessionStorage.setItem("thesis_cities", JSON.stringify(selectedCities));
+    storage.set(STORAGE_KEYS.thesis_states, selectedStates);
+    storage.set(STORAGE_KEYS.thesis_cities, selectedCities);
     router.push("/thesis/budget");
   };
 
@@ -108,10 +117,10 @@ export default function ThesisGeographyPage() {
             Step 2 of 3
           </div>
           <h1 className="font-display text-[28px] font-semibold leading-tight tracking-tight mb-2">
-            Where do you want to invest?
+            Which markets are you investing in?
           </h1>
           <p className="text-[14px] text-ink-secondary leading-relaxed">
-            Pick states first. Tap a state to narrow by specific cities, or leave it state-wide.
+            Pick states first. Tap any selected state to narrow by specific cities — or leave it state-wide to see everything.
           </p>
         </motion.div>
 
@@ -287,8 +296,19 @@ export default function ThesisGeographyPage() {
         </div>
 
         {filtered.length === 0 && (
-          <div className="text-center py-10 text-ink-secondary text-sm">
-            No matches for &ldquo;{search}&rdquo;
+          <div className="text-center py-10 px-4">
+            <div className="text-[14px] font-semibold text-ink mb-1">
+              No states or cities match &ldquo;{search}&rdquo;
+            </div>
+            <div className="text-[12px] text-ink-secondary mb-3">
+              Try a different spelling, or a nearby major city.
+            </div>
+            <button
+              onClick={() => setSearch("")}
+              className="text-[12px] font-semibold text-signal hover:text-signal-dark"
+            >
+              Clear search
+            </button>
           </div>
         )}
       </div>

@@ -16,8 +16,10 @@ import { DataProvenanceCard } from "@/components/property/DataProvenanceCard";
 import { DataQualityCard } from "@/components/property/DataQualityCard";
 import { PropertyCTA } from "@/components/property/PropertyCTA";
 import { PropertySectionNav, type SectionDef } from "@/components/property/PropertySectionNav";
+import { SharedContextBanner } from "@/components/property/SharedContextBanner";
 import { ExpertModeToggle } from "@/components/ui/ExpertModeToggle";
 import { DemoBanner } from "@/components/ui/DemoBanner";
+import { FeedbackWidget } from "@/components/ui/FeedbackWidget";
 import { useExpertMode } from "@/context/ExpertMode";
 import { calculateProfitConfidence } from "@/lib/confidence";
 import type { FeedProperty } from "@/types/roi";
@@ -63,12 +65,16 @@ export function PropertyPageClient({ property }: PropertyPageClientProps) {
         address={fullAddress}
         subtitle={subtitle}
         price={listing.price}
+        propertyId={listing.external_id}
       />
 
       {/* Sticky jump-nav */}
       <PropertySectionNav sections={sections} />
 
       <div className="px-5 pt-3 pb-2 space-y-3 bg-paper-soft">
+        {/* Shared link context (only renders if user arrived via /p/:id) */}
+        <SharedContextBanner />
+
         {/* Demo banner + expert toggle on same row */}
         <div className="flex items-center gap-2">
           <DemoBanner className="flex-1" />
@@ -168,6 +174,13 @@ export function PropertyPageClient({ property }: PropertyPageClientProps) {
         returnPct={lev.cash_on_cash_return_pct ?? 0}
         tenantStatus="ready"
         propertyAddress={`${address.street}, ${address.city}, ${address.state}`}
+        propertyId={listing.external_id}
+      />
+
+      {/* Feedback widget — positioned above the sticky CTA */}
+      <FeedbackWidget
+        context={`property:${listing.external_id}`}
+        bottomOffset={118}
       />
     </>
   );

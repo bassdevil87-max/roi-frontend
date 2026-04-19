@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { storage, STORAGE_KEYS } from "@/lib/storage";
 
 interface ExpertModeContextValue {
   expertMode: boolean;
@@ -10,28 +11,17 @@ interface ExpertModeContextValue {
 
 const ExpertModeContext = createContext<ExpertModeContextValue | null>(null);
 
-const STORAGE_KEY = "roi_expert_mode";
-
 export function ExpertModeProvider({ children }: { children: ReactNode }) {
   const [expertMode, setExpertModeState] = useState(false);
 
-  // Rehydrate from sessionStorage on mount
   useEffect(() => {
-    try {
-      const stored = sessionStorage.getItem(STORAGE_KEY);
-      if (stored === "true") setExpertModeState(true);
-    } catch {
-      // ignore
-    }
+    const stored = storage.get<boolean>(STORAGE_KEYS.expert_mode);
+    if (stored === true) setExpertModeState(true);
   }, []);
 
   const setExpertMode = (on: boolean) => {
     setExpertModeState(on);
-    try {
-      sessionStorage.setItem(STORAGE_KEY, String(on));
-    } catch {
-      // ignore
-    }
+    storage.set(STORAGE_KEYS.expert_mode, on);
   };
 
   const toggleExpertMode = () => setExpertMode(!expertMode);
@@ -46,7 +36,6 @@ export function ExpertModeProvider({ children }: { children: ReactNode }) {
 export function useExpertMode(): ExpertModeContextValue {
   const ctx = useContext(ExpertModeContext);
   if (!ctx) {
-    // Allow use outside provider — default to off. Useful during SSR.
     return {
       expertMode: false,
       setExpertMode: () => {},
