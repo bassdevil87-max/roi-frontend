@@ -1,11 +1,12 @@
 "use client";
-
+ 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Sparkles, SlidersHorizontal, Search, Pencil } from "lucide-react";
+import { Sparkles, SlidersHorizontal, Search, Pencil, Scale } from "lucide-react";
 import { StatusBar } from "@/components/ui/StatusBar";
 import { PropertyCard } from "@/components/feed/PropertyCard";
+import { CompareModeBar } from "@/components/feed/CompareModeBar";
 import { ExpertModeToggle } from "@/components/ui/ExpertModeToggle";
 import { DemoBanner } from "@/components/ui/DemoBanner";
 import { FeedbackWidget } from "@/components/ui/FeedbackWidget";
@@ -13,24 +14,51 @@ import { SearchFilterBar } from "@/components/ui/SearchFilterBar";
 import { ComingSoonModal } from "@/components/ui/ComingSoonModal";
 import { BackToTopButton } from "@/components/ui/BackToTopButton";
 import { ExpertModeHint } from "@/components/ui/ExpertModeHint";
+import { useCompareMode } from "@/lib/useCompareMode";
 import { mockFeedProperties } from "@/lib/mock-data";
+import { fetchRealListings, realListingsEnabled } from "@/lib/api";
 import {
   readThesisFromStorage,
   scoreAgainstThesis,
   type LocalThesis,
 } from "@/lib/thesis-match";
 import { storage, STORAGE_KEYS } from "@/lib/storage";
-
+import type { FeedProperty } from "@/types/roi";
+ 
+// US state code → full name, for HasData keyword building
+const STATE_NAMES: Record<string, string> = {
+  NJ: "New Jersey", PA: "Pennsylvania", NY: "New York", CT: "Connecticut",
+  MA: "Massachusetts", DE: "Delaware", MD: "Maryland", VA: "Virginia",
+  OH: "Ohio", NC: "North Carolina", FL: "Florida", GA: "Georgia",
+  TX: "Texas", CA: "California", IL: "Illinois",
+};
+ 
+function buildKeyword(thesis: LocalThesis | null): string | null {
+  if (!thesis || !thesis.states.length) return null;
+  const state = thesis.states[0];
+  // Prefer city-specific if narrowed
+  const cities = thesis.cities_by_state?.[state];
+  if (cities && cities.length > 0) {
+    return `${cities[0]}, ${state}`;
+  }
+  const stateName = STATE_NAMES[state] ?? state;
+  return `${stateName}`;
+}
+ 
 export default function FeedPage() {
   const [thesis, setThesis] = useState<LocalThesis | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterComingSoonOpen, setFilterComingSoonOpen] = useState(false);
-
+  const [properties, setProperties] = useState<FeedProperty[]>(mockFeedProperties);
+  const [dataSource, setDataSource] = useState<"mock" | "real" | "loading">("mock");
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const compare = useCompareMode();
+ 
   // Read thesis + restore scroll position after mount (storage is client-only)
   useEffect(() => {
     setThesis(readThesisFromStorage());
-
+ 
     // Restore scroll position if the user is returning from a property page
     const savedY = storage.get<number>(STORAGE_KEYS.feed_scroll_y);
     if (typeof savedY === "number" && savedY > 0) {
@@ -41,7 +69,7 @@ export default function FeedPage() {
         storage.remove(STORAGE_KEYS.feed_scroll_y);
       });
     }
-
+ 
     // Save scroll position whenever a card link is clicked
     const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
@@ -52,12 +80,50 @@ export default function FeedPage() {
     document.addEventListener("click", handleClick);
     return () => document.removeEventListener("click", handleClick);
   }, []);
-
+ 
+  // When real listings are enabled AND a thesis has loaded, fetch from HasData.
+  // Falls back silently to mock if: flag is off, thesis has no location, or the
+  // API call fails. Only runs once per thesis change.
+  useEffect(() => {
+    if (!realListingsEnabled()) return;
+    if (!thesis) return;
+ 
+    const keyword = buildKeyword(thesis);
+    if (!keyword) return;
+ 
+    setDataSource("loading");
+    setLoadError(null);
+ 
+    fetchRealListings({
+      keyword,
+      type: "forSale",
+      min_price: thesis.min_price > 0 ? thesis.min_price : undefined,
+      max_price: thesis.max_price < 10_000_000 ? thesis.max_price : undefined,
+    })
+      .then((res) => {
+        if (res.properties.length > 0) {
+          setProperties(res.properties);
+          setDataSource("real");
+        } else {
+          // Empty real result — fall back to mock so the user sees something
+          setProperties(mockFeedProperties);
+          setDataSource("mock");
+          setLoadError("No real listings found for this location. Showing demo data.");
+        }
+      })
+      .catch((e) => {
+        console.warn("[feed] Real listings fetch failed, using mock:", e);
+        setProperties(mockFeedProperties);
+        setDataSource("mock");
+        setLoadError(e instanceof Error ? e.message : "Live listings unavailable");
+      });
+  }, [thesis]);
+ 
   // Score every property and split into passing / partial / excluded
   const { passing: allPassing, partial: allPartial, totalAnalyzed, thesisActive } = useMemo(() => {
     // If no thesis saved, treat everything as a match (default demo state)
     if (!thesis) {
-      const scored = mockFeedProperties.map((p) => ({
+      const scored = properties.map((p) => ({
         property: p,
         score: p.thesis_matches[0]?.match_score_pct ?? 75,
         passes: true,
@@ -68,12 +134,12 @@ export default function FeedPage() {
       return {
         passing: scored.sort((a, b) => b.score - a.score),
         partial: [],
-        totalAnalyzed: mockFeedProperties.length,
+        totalAnalyzed: properties.length,
         thesisActive: false,
       };
     }
-
-    const scored = mockFeedProperties.map((p) => {
+ 
+    const scored = properties.map((p) => {
       const r = scoreAgainstThesis(p, thesis);
       return {
         property: {
@@ -95,21 +161,21 @@ export default function FeedPage() {
         unmatched: r.unmatched,
       };
     });
-
+ 
     // Passing: score >= 70 and no hard fails. Partial: rest with score > 30.
     const passes = scored.filter((s) => s.passes).sort((a, b) => b.score - a.score);
     const partials = scored
       .filter((s) => !s.passes && s.score > 30)
       .sort((a, b) => b.score - a.score);
-
+ 
     return {
       passing: passes,
       partial: partials,
-      totalAnalyzed: mockFeedProperties.length,
+      totalAnalyzed: properties.length,
       thesisActive: true,
     };
-  }, [thesis]);
-
+  }, [thesis, properties]);
+ 
   // Apply search filter on top of thesis filtering — address/city/state match
   const { passing, partial } = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -129,16 +195,41 @@ export default function FeedPage() {
       partial: allPartial.filter(matches),
     };
   }, [allPassing, allPartial, searchQuery]);
-
+ 
   return (
     <>
       <StatusBar />
-
+ 
       {/* Header */}
       <header className="px-5 pt-2 pb-4 bg-white">
         {/* Demo mode banner */}
         <DemoBanner className="mb-3" />
-
+ 
+        {/* Live data indicator — shown when real listings are enabled */}
+        {realListingsEnabled() && (
+          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg mb-3 text-[11px] font-medium ${
+            dataSource === "real" ? "bg-money-bg text-money" :
+            dataSource === "loading" ? "bg-paper-card text-ink-secondary" :
+            "bg-warn-bg text-warn"
+          }`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${
+              dataSource === "real" ? "bg-money animate-pulse" :
+              dataSource === "loading" ? "bg-ink-tertiary animate-pulse" :
+              "bg-warn"
+            }`} />
+            <span className="font-semibold">
+              {dataSource === "real" && "Live Zillow data"}
+              {dataSource === "loading" && "Loading live data…"}
+              {dataSource === "mock" && (loadError ? "Demo data — live unavailable" : "Demo data")}
+            </span>
+            {loadError && dataSource !== "loading" && (
+              <span className="text-[10px] text-ink-tertiary truncate ml-1">
+                {loadError}
+              </span>
+            )}
+          </div>
+        )}
+ 
         <div className="flex items-start justify-between mb-1">
           <div className="flex-1 min-w-0">
             <div className="text-[11px] text-ink-tertiary uppercase tracking-wider font-medium mb-0.5">
@@ -162,6 +253,16 @@ export default function FeedPage() {
               <Search className="w-4 h-4" strokeWidth={2} />
             </button>
             <button
+              onClick={compare.toggleMode}
+              className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
+                compare.enabled ? "bg-ink text-white" : "bg-paper-card hover:bg-paper-stroke"
+              }`}
+              aria-label="Compare properties"
+              aria-pressed={compare.enabled}
+            >
+              <Scale className="w-4 h-4" strokeWidth={2} />
+            </button>
+            <button
               onClick={() => setFilterComingSoonOpen(true)}
               className="w-10 h-10 rounded-full bg-paper-card flex items-center justify-center hover:bg-paper-stroke transition-colors"
               aria-label="Filters"
@@ -170,7 +271,7 @@ export default function FeedPage() {
             </button>
           </div>
         </div>
-
+ 
         {/* Search bar — expands below when search is open */}
         <SearchFilterBar
           open={searchOpen}
@@ -178,20 +279,20 @@ export default function FeedPage() {
           onChange={setSearchQuery}
           onClose={() => setSearchOpen(false)}
         />
-
+ 
         {/* Expert mode toggle */}
         <div className="flex justify-end mt-2">
           <ExpertModeToggle />
         </div>
-
+ 
         {/* First-run hint pointing at expert mode */}
         <div className="mt-2">
           <ExpertModeHint />
         </div>
-
+ 
         {/* Thesis summary bar */}
         {thesisActive && thesis && <ThesisSummary thesis={thesis} />}
-
+ 
         {/* Pipeline summary */}
         <div className="flex items-center gap-2 mt-3 p-3 bg-money-bg/40 border border-money/20 rounded-xl">
           <Sparkles className="w-4 h-4 text-money flex-shrink-0" strokeWidth={2} />
@@ -205,7 +306,7 @@ export default function FeedPage() {
           </div>
         </div>
       </header>
-
+ 
       {/* Passing properties */}
       <section className="px-5 pt-2 space-y-4 bg-paper-soft pb-4">
         {passing.length === 0 && (
@@ -242,16 +343,19 @@ export default function FeedPage() {
             </div>
           </motion.div>
         )}
-
+ 
         {passing.map((item, i) => (
           <PropertyCard
             key={item.property.listing.external_id}
             property={item.property}
             index={i}
+            compareMode={compare.enabled}
+            compareSelected={compare.isSelected(item.property.listing.external_id)}
+            onCompareToggle={() => compare.toggleSelect(item.property.listing.external_id)}
           />
         ))}
       </section>
-
+ 
       {/* Partial matches below a divider */}
       {partial.length > 0 && (
         <section className="bg-paper-soft pt-4 pb-8">
@@ -262,13 +366,13 @@ export default function FeedPage() {
             </span>
             <div className="h-px bg-paper-stroke flex-1" />
           </div>
-
+ 
           <div className="px-5 mb-3">
             <p className="text-xs text-ink-secondary text-center max-w-xs mx-auto">
               These don&apos;t fully match your thesis, but might still be worth a look.
             </p>
           </div>
-
+ 
           <div className="px-5 space-y-4">
             {partial.map((item, i) => (
               <div key={item.property.listing.external_id} className="relative">
@@ -277,7 +381,13 @@ export default function FeedPage() {
                   animate={{ opacity: 1 }}
                   className="opacity-90"
                 >
-                  <PropertyCard property={item.property} index={i} />
+                  <PropertyCard
+                    property={item.property}
+                    index={i}
+                    compareMode={compare.enabled}
+                    compareSelected={compare.isSelected(item.property.listing.external_id)}
+                    onCompareToggle={() => compare.toggleSelect(item.property.listing.external_id)}
+                  />
                 </motion.div>
                 {/* Why it's not a full match — subtle annotation */}
                 {item.unmatched.length > 0 && (
@@ -291,13 +401,25 @@ export default function FeedPage() {
           </div>
         </section>
       )}
-
-      {/* Feedback widget — lives at bottom-right, no sticky CTA on feed */}
-      <FeedbackWidget context="feed" bottomOffset={24} />
-
+ 
+      {/* Compare mode bottom bar */}
+      {compare.enabled && (
+        <CompareModeBar
+          selectedCount={compare.selected.length}
+          selectedIds={compare.selected}
+          onExit={compare.exitMode}
+          onClear={compare.clear}
+        />
+      )}
+ 
+      {/* Feedback widget — hide in compare mode so it doesn't clutter */}
+      {!compare.enabled && (
+        <FeedbackWidget context="feed" bottomOffset={24} />
+      )}
+ 
       {/* Back-to-top — shown after 600px scroll, sits above feedback FAB */}
-      <BackToTopButton bottomOffset={84} />
-
+      {!compare.enabled && <BackToTopButton bottomOffset={84} />}
+ 
       {/* Filters coming soon modal */}
       <ComingSoonModal
         open={filterComingSoonOpen}
@@ -315,39 +437,39 @@ export default function FeedPage() {
     </>
   );
 }
-
+ 
 // ────────────────────────────────────────────────────────────────────────────
-
+ 
 function ThesisSummary({ thesis }: { thesis: LocalThesis }) {
   const narrowedCityCount = thesis.cities_by_state
     ? Object.values(thesis.cities_by_state).reduce((sum, arr) => sum + arr.length, 0)
     : 0;
-
+ 
   const statesDisplay =
     thesis.states.length === 0
       ? "Any state"
       : thesis.states.length <= 3
       ? thesis.states.join(", ")
       : `${thesis.states.slice(0, 2).join(", ")} +${thesis.states.length - 2}`;
-
+ 
   const geoDisplay =
     narrowedCityCount > 0
       ? `${statesDisplay} · ${narrowedCityCount} cit${narrowedCityCount === 1 ? "y" : "ies"}`
       : statesDisplay;
-
+ 
   const typeDisplay =
     thesis.property_type_pref === "single_family_only"
       ? "Single family"
       : thesis.property_type_pref === "multi_family_only"
       ? "Multi-family"
       : "Any type";
-
+ 
   const priceDisplay = `$${(thesis.min_price / 1000).toFixed(0)}k–${
     thesis.max_price >= 1_000_000
       ? `$${(thesis.max_price / 1_000_000).toFixed(1)}M`
       : `$${(thesis.max_price / 1000).toFixed(0)}k`
   }`;
-
+ 
   return (
     <div className="mt-3 flex items-center gap-2 p-3 bg-ink rounded-xl">
       <div className="flex-1 min-w-0">

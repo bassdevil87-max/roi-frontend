@@ -14,13 +14,24 @@ import { useSavedProperties } from "@/lib/useSavedProperties";
 import { cn } from "@/lib/utils";
 import { DATA_SOURCE_LABELS } from "@/types/roi";
 import type { FeedProperty } from "@/types/roi";
+import { Check } from "lucide-react";
 
 interface PropertyCardProps {
   property: FeedProperty;
   index?: number;
+  /** When true, card shows selection overlay and intercepts click to toggle instead of navigating */
+  compareMode?: boolean;
+  compareSelected?: boolean;
+  onCompareToggle?: () => void;
 }
 
-export function PropertyCard({ property, index = 0 }: PropertyCardProps) {
+export function PropertyCard({
+  property,
+  index = 0,
+  compareMode = false,
+  compareSelected = false,
+  onCompareToggle,
+}: PropertyCardProps) {
   const { expertMode } = useExpertMode();
   const { isSaved, toggle, isMounted } = useSavedProperties();
   const lev = property.financials.leveraged;
@@ -38,68 +49,88 @@ export function PropertyCard({ property, index = 0 }: PropertyCardProps) {
   const useImmediate = index < 6;
   const staggerDelay = useImmediate ? index * 0.06 : 0;
 
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      {...(useImmediate
-        ? { animate: { opacity: 1, y: 0 } }
-        : {
-            whileInView: { opacity: 1, y: 0 },
-            viewport: { once: true, margin: "-50px" },
-          })}
-      transition={{ duration: 0.35, delay: staggerDelay, ease: [0.16, 1, 0.3, 1] }}
+  // In compare mode: the card toggles selection instead of navigating.
+  // The Link wrapper is replaced with a div + click handler.
+  const cardInner = (
+    <article
+      className={cn(
+        "bg-white rounded-card overflow-hidden border transition-all group",
+        compareMode
+          ? compareSelected
+            ? "border-money border-2 shadow-cardHover"
+            : "border-paper-stroke hover:border-ink/30"
+          : "border-paper-stroke hover:shadow-cardHover"
+      )}
     >
-      <Link
-        href={`/property/${property.listing.external_id}`}
-        className="block"
-      >
-        <article className="bg-white rounded-card overflow-hidden border border-paper-stroke hover:shadow-cardHover transition-shadow group">
-          {/* Image */}
-          <div className="relative aspect-[16/10] overflow-hidden bg-paper-card">
-            {property.hero_image && (
-              <Image
-                src={property.hero_image}
-                alt={property.address.street}
-                fill
-                sizes="(max-width: 430px) 100vw, 430px"
-                className="object-cover group-hover:scale-[1.03] transition-transform duration-500"
-              />
+      {/* Image */}
+      <div className="relative aspect-[16/10] overflow-hidden bg-paper-card">
+        {property.hero_image && (
+          <Image
+            src={property.hero_image}
+            alt={property.address.street}
+            fill
+            sizes="(max-width: 430px) 100vw, 430px"
+            className={cn(
+              "object-cover transition-transform duration-500",
+              !compareMode && "group-hover:scale-[1.03]",
+              compareMode && !compareSelected && "opacity-70"
+            )}
+          />
+        )}
+
+        {/* Compare mode: selection overlay */}
+        {compareMode && (
+          <div
+            className={cn(
+              "absolute top-3 left-3 w-7 h-7 rounded-full flex items-center justify-center transition-all z-10",
+              compareSelected
+                ? "bg-money text-white shadow-card"
+                : "bg-white/90 backdrop-blur-md border-2 border-paper-stroke"
+            )}
+            aria-hidden
+          >
+            {compareSelected && <Check className="w-4 h-4" strokeWidth={3} />}
+          </div>
+        )}
+
+            {/* Top-left: thesis match badge — hidden in compare mode (replaced by selection circle) */}
+            {!compareMode && (
+              <div className="absolute top-3 left-3">
+                <div className="bg-white/95 backdrop-blur-md rounded-full px-2.5 py-1 flex items-center gap-1.5">
+                  <div className="w-1.5 h-1.5 rounded-full bg-money" />
+                  <span className="text-[11px] font-semibold tabular">
+                    {bestMatch.toFixed(0)}% match
+                  </span>
+                </div>
+              </div>
             )}
 
-            {/* Top-left: thesis match badge */}
-            <div className="absolute top-3 left-3">
-              <div className="bg-white/95 backdrop-blur-md rounded-full px-2.5 py-1 flex items-center gap-1.5">
-                <div className="w-1.5 h-1.5 rounded-full bg-money" />
-                <span className="text-[11px] font-semibold tabular">
-                  {bestMatch.toFixed(0)}% match
-                </span>
-              </div>
-            </div>
-
-            {/* Top-right: save heart */}
-            <button
-              className={cn(
-                "absolute top-3 right-3 w-9 h-9 rounded-full flex items-center justify-center transition-all",
-                saved
-                  ? "bg-danger/95 backdrop-blur-md hover:bg-danger"
-                  : "bg-white/95 backdrop-blur-md hover:bg-white"
-              )}
-              aria-label={saved ? "Unsave property" : "Save property"}
-              aria-pressed={saved}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                toggle(property.listing.external_id);
-              }}
-            >
-              <Heart
+            {/* Top-right: save heart — hidden in compare mode */}
+            {!compareMode && (
+              <button
                 className={cn(
-                  "w-4 h-4 transition-colors",
-                  saved ? "fill-white text-white" : "text-ink"
+                  "absolute top-3 right-3 w-9 h-9 rounded-full flex items-center justify-center transition-all",
+                  saved
+                    ? "bg-danger/95 backdrop-blur-md hover:bg-danger"
+                    : "bg-white/95 backdrop-blur-md hover:bg-white"
                 )}
-                strokeWidth={2}
-              />
-            </button>
+                aria-label={saved ? "Unsave property" : "Save property"}
+                aria-pressed={saved}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  toggle(property.listing.external_id);
+                }}
+              >
+                <Heart
+                  className={cn(
+                    "w-4 h-4 transition-colors",
+                    saved ? "fill-white text-white" : "text-ink"
+                  )}
+                  strokeWidth={2}
+                />
+              </button>
+            )}
 
             {/* Bottom: monthly profit chip + confidence dot */}
             {lev && (
@@ -186,7 +217,38 @@ export function PropertyCard({ property, index = 0 }: PropertyCardProps) {
             )}
           </div>
         </article>
-      </Link>
+  );
+
+  // Wrap in Link (normal mode) or clickable div (compare mode)
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      {...(useImmediate
+        ? { animate: { opacity: 1, y: 0 } }
+        : {
+            whileInView: { opacity: 1, y: 0 },
+            viewport: { once: true, margin: "-50px" },
+          })}
+      transition={{ duration: 0.35, delay: staggerDelay, ease: [0.16, 1, 0.3, 1] }}
+    >
+      {compareMode ? (
+        <button
+          type="button"
+          onClick={onCompareToggle}
+          className="block w-full text-left"
+          aria-pressed={compareSelected}
+          aria-label={compareSelected ? "Deselect for comparison" : "Select for comparison"}
+        >
+          {cardInner}
+        </button>
+      ) : (
+        <Link
+          href={`/property/${property.listing.external_id}`}
+          className="block"
+        >
+          {cardInner}
+        </Link>
+      )}
     </motion.div>
   );
 }
